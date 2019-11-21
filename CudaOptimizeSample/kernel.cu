@@ -225,7 +225,7 @@ __constant__ float filter3[3][3] = {
 	{ 0.059634295f, 0.098320331f, 0.059634295f },
 };
 
-__global__ void BilateralKernelSimple(const uint8_t *src, uint8_t *dst, int width, int height, int step, int sigma)
+__global__ void BilateralKernelNaive(const uint8_t *src, uint8_t *dst, int width, int height, int step, float sigma)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -233,38 +233,62 @@ __global__ void BilateralKernelSimple(const uint8_t *src, uint8_t *dst, int widt
 	if (x < width && y < height) {
 		float c_sum = 0;
 		float f_sum = 0;
-		int center = src[x + y * step];
+		int val0 = src[x + y * step];
 		for (int dy = 0; dy < 3; ++dy) {
 			for (int dx = 0; dx < 3; ++dx) {
-				int c = src[(x + dx) + (y + dy) * step];
-				if (abs(center - c) <= sigma) {
-					float f = filter3[dy][dx];
-					f_sum += f;
-					c_sum += f * c;
-				}
+				int val = src[(x + dx) + (y + dy) * step];
+				int diff = val - val0;
+				float f = filter3[dy][dx] * (1 / sqrtf(2 * 3.1415926f * sigma * sigma)) * expf(-diff * diff / (2 * sigma * sigma));
+				f_sum += f;
+				c_sum += f * val;
 			}
 		}
 		dst[x + y * step] = (int)(c_sum / f_sum + 0.5f);
 	}
 }
 
-__global__ void BilateralKernelFast(const uint8_t *src, uint8_t *dst, int width, int height, int step, int sigma)
+__global__ void BilateralKernelSimple(const uint8_t *src, uint8_t *dst, int width, int height, int step, float sigma)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
 	if (x < width && y < height) {
+		float coef = 1.0 / sqrtf(2 * 3.1415926f * sigma * sigma);
+		float coef2 = -1.0 / (2 * sigma * sigma);
 		float c_sum = 0;
 		float f_sum = 0;
-		int center = src[x + y * step];
+		int val0 = src[x + y * step];
 		for (int dy = 0; dy < 3; ++dy) {
 			for (int dx = 0; dx < 3; ++dx) {
-				int c = src[(x + dx) + (y + dy) * step];
-				if (abs(center - c) <= sigma) {
-					float f = filter3[dy][dx];
-					f_sum += f;
-					c_sum += f * c;
-				}
+				int val = src[(x + dx) + (y + dy) * step];
+				int diff = val - val0;
+				float w = filter3[dy][dx] * coef * expf(diff * diff * coef2);
+				f_sum += w;
+				c_sum += w * val;
+			}
+		}
+		dst[x + y * step] = (int)(c_sum / f_sum + 0.5f);
+	}
+}
+
+__global__ void BilateralKernelFast(const uint8_t *src, uint8_t *dst, int width, int height, int step, float sigma)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < width && y < height) {
+		float coef = __frsqrt_rn(2 * 3.1415926f * sigma * sigma);
+		float coef2 = __frcp_rn(-2 * sigma * sigma);
+		float c_sum = 0;
+		float f_sum = 0;
+		int val0 = src[x + y * step];
+		for (int dy = 0; dy < 3; ++dy) {
+			for (int dx = 0; dx < 3; ++dx) {
+				int val = src[(x + dx) + (y + dy) * step];
+				int diff = val - val0;
+				float f = filter3[dy][dx] * coef * __expf(diff * diff * coef2);
+				f_sum += f;
+				c_sum += f * val;
 			}
 		}
 		dst[x + y * step] = (int)(__fdividef(c_sum, f_sum) + 0.5f);
@@ -286,8 +310,10 @@ cv::Mat BilateralFilterGPUOpt(cv::Mat src, int opt)
 		(width + threadsPerBlock.x - 1) / threadsPerBlock.x,
 		(height + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	if (opt == 1)
-		BilateralKernelSimple << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 2, height - 2, width, 10);
+		BilateralKernelNaive << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 2, height - 2, width, 10);
 	else if (opt == 2)
+		BilateralKernelSimple << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 2, height - 2, width, 10);
+	else if (opt == 3)
 		BilateralKernelFast << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 2, height - 2, width, 10);
 	else
 		printf("NOT IMPLEMENTED\n");

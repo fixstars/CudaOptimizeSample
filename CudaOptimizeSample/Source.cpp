@@ -196,15 +196,21 @@ TEST(Gaussian, Color4) {
 	cv::imwrite("../out/gaussian_color4.png", dst);
 }
 
-TEST(Bilateral, Simple) {
+TEST(Bilateral, Naive) {
 	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
 	cv::Mat dst = BilateralFilterGPUOpt(src, 1);
+	cv::imwrite("../out/bilateral_naive.png", dst);
+}
+
+TEST(Bilateral, Simple) {
+	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
+	cv::Mat dst = BilateralFilterGPUOpt(src, 2);
 	cv::imwrite("../out/bilateral_simple.png", dst);
 }
 
 TEST(Bilateral, Fast) {
 	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
-	cv::Mat dst = BilateralFilterGPUOpt(src, 2);
+	cv::Mat dst = BilateralFilterGPUOpt(src, 3);
 	cv::imwrite("../out/bilateral_fast.png", dst);
 }
 
