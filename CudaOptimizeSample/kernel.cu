@@ -19,6 +19,54 @@ void OnCudaError(cudaError_t err) {
 	throw "CUDA ERROR";
 }
 
+__global__ void GaussianKernelSimple(const uint8_t *src, uint8_t *dst, int width, int height, int step)
+{
+	const float filter[5][5] = {
+		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
+		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
+		{ 0.021938231f, 0.098320331f, 0.162102822f, 0.098320331f, 0.021938231f },
+		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
+		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
+	};
+
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < width && y < height) {
+		float sum = 0;
+		for (int dy = 0; dy < 5; ++dy) {
+			for (int dx = 0; dx < 5; ++dx) {
+				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
+			}
+		}
+		dst[x + y * step] = (int)(sum + 0.5f);
+	}
+}
+
+__global__ void GaussianKernelArray(const uint8_t *src, uint8_t *dst, int width, int height, int step, int ks)
+{
+	const float filter[5][5] = {
+		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
+		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
+		{ 0.021938231f, 0.098320331f, 0.162102822f, 0.098320331f, 0.021938231f },
+		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
+		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
+	};
+
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < width && y < height) {
+		float sum = 0;
+		for (int dy = 0; dy < ks; ++dy) {
+			for (int dx = 0; dx < ks; ++dx) {
+				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
+			}
+		}
+		dst[x + y * step] = (int)(sum + 0.5f);
+	}
+}
+
 __constant__ float filter[5][5] = {
 	{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
 	{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
@@ -27,7 +75,23 @@ __constant__ float filter[5][5] = {
 	{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
 };
 
-__global__ void GaussianKernelSimple(const uint8_t *src, uint8_t *dst, int width, int height, int step)
+__global__ void GaussianKernelConstant(const uint8_t *src, uint8_t *dst, int width, int height, int step, int ks)
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x < width && y < height) {
+		float sum = 0;
+		for (int dy = 0; dy < ks; ++dy) {
+			for (int dx = 0; dx < ks; ++dx) {
+				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
+			}
+		}
+		dst[x + y * step] = (int)(sum + 0.5f);
+	}
+}
+
+__global__ void GaussianKernelConstantFixed(const uint8_t *src, uint8_t *dst, int width, int height, int step)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -78,70 +142,6 @@ __global__ void GaussianKernelShared(const uint8_t *src, uint8_t *dst, int width
 	}
 }
 
-__global__ void GaussianKernelSimpleArray(const uint8_t *src, uint8_t *dst, int width, int height, int step)
-{
-	float filter[5][5] = {
-		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
-		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
-		{ 0.021938231f, 0.098320331f, 0.162102822f, 0.098320331f, 0.021938231f },
-		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
-		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
-	};
-
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-	if (x < width && y < height) {
-		float sum = 0;
-		for (int dy = 0; dy < 5; ++dy) {
-			for (int dx = 0; dx < 5; ++dx) {
-				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
-			}
-		}
-		dst[x + y * step] = (int)(sum + 0.5f);
-	}
-}
-
-__global__ void GaussianKernelNonfixed(const uint8_t *src, uint8_t *dst, int width, int height, int step, int ks)
-{
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-	if (x < width && y < height) {
-		float sum = 0;
-		for (int dy = 0; dy < ks; ++dy) {
-			for (int dx = 0; dx < ks; ++dx) {
-				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
-			}
-		}
-		dst[x + y * step] = (int)(sum + 0.5f);
-	}
-}
-
-__global__ void GaussianKernelArray(const uint8_t *src, uint8_t *dst, int width, int height, int step, int ks)
-{
-	float filter[5][5] = {
-		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
-		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
-		{ 0.021938231f, 0.098320331f, 0.162102822f, 0.098320331f, 0.021938231f },
-		{ 0.01330621f, 0.059634295f, 0.098320331f, 0.059634295f, 0.01330621f },
-		{ 0.002969017f, 0.01330621f, 0.021938231f, 0.01330621f, 0.002969017f },
-	};
-
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-	if (x < width && y < height) {
-		float sum = 0;
-		for (int dy = 0; dy < ks; ++dy) {
-			for (int dx = 0; dx < ks; ++dx) {
-				sum += filter[dy][dx] * src[(x + dx) + (y + dy) * step];
-			}
-		}
-		dst[x + y * step] = (int)(sum + 0.5f);
-	}
-}
-
 cv::Mat GaussianFilterGPUSimple(cv::Mat src)
 {
 	int width = src.cols, height = src.rows;
@@ -152,7 +152,7 @@ cv::Mat GaussianFilterGPUSimple(cv::Mat src)
 	ck(cudaMemcpy(dev_src, src.data, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
     // Launch a kernel on the GPU with one thread for each element.
-	dim3 threadsPerBlock(32, 8);
+	dim3 threadsPerBlock(32, 32);
 	dim3 numBlocks(
 		(width + threadsPerBlock.x - 1) / threadsPerBlock.x,
 		(height + threadsPerBlock.y - 1) / threadsPerBlock.y);
@@ -191,13 +191,13 @@ cv::Mat GaussianFilterGPUOpt(cv::Mat src, int opt)
 		(width + threadsPerBlock.x - 1) / threadsPerBlock.x,
 		(height + threadsPerBlock.y - 1) / threadsPerBlock.y);
 	if (opt == 1)
-		GaussianKernelShared << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width);
-	else if (opt == 2)
-		GaussianKernelSimpleArray << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width);
-	else if (opt == 3)
-		GaussianKernelNonfixed << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width, 5);
-	else if (opt == 4)
 		GaussianKernelArray << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width, 5);
+	else if (opt == 2)
+		GaussianKernelConstant << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width, 5);
+	else if (opt == 3)
+		GaussianKernelConstantFixed << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width);
+	else if (opt == 4)
+		GaussianKernelShared << <numBlocks, threadsPerBlock >> > (dev_src, dev_dst, width - 4, height - 4, width);
 	else
 		printf("NOT IMPLEMENTED\n");
 
@@ -238,9 +238,9 @@ __global__ void BilateralKernelNaive(const uint8_t *src, uint8_t *dst, int width
 			for (int dx = 0; dx < 3; ++dx) {
 				int val = src[(x + dx) + (y + dy) * step];
 				int diff = val - val0;
-				float f = filter3[dy][dx] * (1 / sqrtf(2 * 3.1415926f * sigma * sigma)) * expf(-diff * diff / (2 * sigma * sigma));
-				f_sum += f;
-				c_sum += f * val;
+				float w = filter3[dy][dx] * (1 / sqrtf(2 * 3.1415926f * sigma * sigma)) * expf(-diff * diff / (2 * sigma * sigma));
+				f_sum += w;
+				c_sum += w * val;
 			}
 		}
 		dst[x + y * step] = (int)(c_sum / f_sum + 0.5f);
@@ -286,9 +286,9 @@ __global__ void BilateralKernelFast(const uint8_t *src, uint8_t *dst, int width,
 			for (int dx = 0; dx < 3; ++dx) {
 				int val = src[(x + dx) + (y + dy) * step];
 				int diff = val - val0;
-				float f = filter3[dy][dx] * coef * __expf(diff * diff * coef2);
-				f_sum += f;
-				c_sum += f * val;
+				float w = filter3[dy][dx] * coef * __expf(diff * diff * coef2);
+				f_sum += w;
+				c_sum += w * val;
 			}
 		}
 		dst[x + y * step] = (int)(__fdividef(c_sum, f_sum) + 0.5f);
@@ -896,6 +896,20 @@ cv::Mat ReduceHFast(cv::Mat src)
 	return dst;
 }
 
+__global__ void ReduceWKernelSimple(const uint8_t *src, float *dst, int width, int height)
+{
+	int y = blockIdx.x * blockDim.x + threadIdx.x;
+	int x = blockIdx.y * 128;
+
+	if (y < height) {
+		float sum = 0;
+		for (int xend = min(x + 128, width); x < xend; ++x) {
+			sum += src[x + y * width];
+		}
+		atomicAdd(&dst[y], sum);
+	}
+}
+
 __device__ float ReduceFunc(int tid, float* buf)
 {
 	if (tid < 256) {
@@ -922,7 +936,7 @@ __device__ float ReduceFunc(int tid, float* buf)
 	return sum;
 }
 
-__global__ void ReduceWKernel(const uint8_t *src, float *dst, int width, int height)
+__global__ void ReduceWKernelFast(const uint8_t *src, float *dst, int width, int height)
 {
 	int tid = threadIdx.x;
 	int y = blockIdx.y;
@@ -953,10 +967,51 @@ cv::Mat ReduceWSimple(cv::Mat src)
 	ck(cudaMalloc((void**)&dev_dst, height * sizeof(float)));
 	ck(cudaMemcpy(dev_src, src.data, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
+	{
+		dim3 threadsPerBlock(1024);
+		dim3 numBlocks((height + threadsPerBlock.x - 1) / threadsPerBlock.x);
+		ReduceInitKernel << <numBlocks, threadsPerBlock >> >(dev_dst, height);
+	}
+	{
+		dim3 threadsPerBlock(1024);
+		dim3 numBlocks(
+			(height + threadsPerBlock.x - 1) / threadsPerBlock.x,
+			(width + 128 - 1) / 128);
+		ReduceWKernelSimple << <numBlocks, threadsPerBlock >> >(dev_src, dev_dst, width, height);
+	}
+
+	// Check for any errors launching the kernel
+	ck(cudaGetLastError());
+
+	// cudaDeviceSynchronize waits for the kernel to finish, and returns
+	// any errors encountered during the launch.
+	ck(cudaDeviceSynchronize());
+
+	cv::Mat dst(height, 1, CV_32FC1);
+
+	// Copy output vector from GPU buffer to host memory.
+	ck(cudaMemcpy(dst.data, dev_dst, height * sizeof(float), cudaMemcpyDeviceToHost));
+
+	ck(cudaFree(dev_src));
+	ck(cudaFree(dev_dst));
+
+	return dst;
+}
+
+cv::Mat ReduceWFast(cv::Mat src)
+{
+	int width = src.cols, height = src.rows;
+	uint8_t *dev_src;
+	float *dev_dst;
+
+	ck(cudaMalloc((void**)&dev_src, width * height * sizeof(uint8_t)));
+	ck(cudaMalloc((void**)&dev_dst, height * sizeof(float)));
+	ck(cudaMemcpy(dev_src, src.data, width * height * sizeof(uint8_t), cudaMemcpyHostToDevice));
+
 	// Launch a kernel on the GPU with one thread for each element.
 	dim3 threadsPerBlock(512);
 	dim3 numBlocks(height);
-	ReduceWKernel << <numBlocks, threadsPerBlock >> >(dev_src, dev_dst, width, height);
+	ReduceWKernelFast << <numBlocks, threadsPerBlock >> >(dev_src, dev_dst, width, height);
 
 	// Check for any errors launching the kernel
 	ck(cudaGetLastError());

@@ -132,28 +132,28 @@ TEST(Gaussian, Simple) {
 	cv::imwrite("../out/gaussian_simple.png", dst);
 }
 
-TEST(Gaussian, Shared) {
-	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
-	cv::Mat dst = GaussianFilterGPUOpt(src, 1);
-	cv::imwrite("../out/gaussian_shared.png", dst);
-}
-
-TEST(Gaussian, SimpleArray) {
-	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
-	cv::Mat dst = GaussianFilterGPUOpt(src, 2);
-	cv::imwrite("../out/gaussian_simple_array.png", dst);
-}
-
-TEST(Gaussian, Nonfixed) {
-	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
-	cv::Mat dst = GaussianFilterGPUOpt(src, 3);
-	cv::imwrite("../out/gaussian_nonfixed.png", dst);
-}
-
 TEST(Gaussian, Array) {
 	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
-	cv::Mat dst = GaussianFilterGPUOpt(src, 4);
+	cv::Mat dst = GaussianFilterGPUOpt(src, 1);
 	cv::imwrite("../out/gaussian_array.png", dst);
+}
+
+TEST(Gaussian, Constant) {
+	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
+	cv::Mat dst = GaussianFilterGPUOpt(src, 2);
+	cv::imwrite("../out/gaussian_copnstant.png", dst);
+}
+
+TEST(Gaussian, ConstantFixed) {
+	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
+	cv::Mat dst = GaussianFilterGPUOpt(src, 3);
+	cv::imwrite("../out/gaussian_constant_fixed.png", dst);
+}
+
+TEST(Gaussian, Shared) {
+	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
+	cv::Mat dst = GaussianFilterGPUOpt(src, 4);
+	cv::imwrite("../out/gaussian_shared.png", dst);
 }
 
 TEST(Gaussian, Pinned) {
@@ -289,6 +289,7 @@ void ReduceWCPUMT(const uint8_t *src, float *dst, int width, int height)
 cv::Mat ReduceHSimple(cv::Mat src);
 cv::Mat ReduceHFast(cv::Mat src);
 cv::Mat ReduceWSimple(cv::Mat src);
+cv::Mat ReduceWFast(cv::Mat src);
 
 TEST(Reduce, HCPU) {
 	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
@@ -363,6 +364,19 @@ TEST(Reduce, HFast) {
 TEST(Reduce, WSimple) {
 	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
 	cv::Mat dst = ReduceWSimple(src);
+	cv::Mat ref(dst.cols, dst.rows, dst.type());
+	ReduceWCPU(src.data, (float*)ref.data, src.cols, src.rows);
+	for (int i = 0; i < dst.cols; ++i) {
+		if (std::abs(dst.at<float>(i) - ref.at<float>(i)) >= 1) {
+			printf("ERROR %f vs %f\n", dst.at<float>(i), ref.at<float>(i));
+			break;
+		}
+	}
+}
+
+TEST(Reduce, WFast) {
+	cv::Mat src = cv::imread("../sample.jpg", cv::IMREAD_GRAYSCALE);
+	cv::Mat dst = ReduceWFast(src);
 	cv::Mat ref(dst.cols, dst.rows, dst.type());
 	ReduceWCPU(src.data, (float*)ref.data, src.cols, src.rows);
 	for (int i = 0; i < dst.cols; ++i) {
